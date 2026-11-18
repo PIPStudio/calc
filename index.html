@@ -1,0 +1,245 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>动画外包盈亏计算器</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Noto+Sans+SC:wght@400;500;700&family=Noto+Serif+SC:wght@600&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+<style>
+:root{
+  /* layout: summary strip on top, controls left + chart right, scenario matrix and notes below */
+  --paper:#f4f5f7; --card:#ffffff; --ink:#15181e; --muted:#5b6170; --line:#dfe2e8;
+  --accent:#3b4cca; --rev:#2a6fd6; --cost:#e0662e; --now:#16a37a; --be:#6a4fd6;
+  --good:#127a52; --good-bg:#e3f4ec; --bad:#b4322b; --bad-bg:#fbe7e5;
+  --display:"Noto Serif SC","Songti SC",serif; --body:"Noto Sans SC","PingFang SC","Microsoft YaHei",system-ui,sans-serif; --mono:"JetBrains Mono",ui-monospace,Menlo,monospace;
+  color-scheme:light;
+}
+@media (prefers-color-scheme:dark){:root:not([data-theme="light"]){
+  --paper:#111318; --card:#1a1d24; --ink:#eceef3; --muted:#a3a8b5; --line:#2c303a;
+  --accent:#8b97ff; --rev:#5b9bf0; --cost:#f08a55; --now:#2fc795; --be:#a08cf5;
+  --good:#5fd3a2; --good-bg:#16352a; --bad:#ff8c84; --bad-bg:#3d1d1b; color-scheme:dark;}}
+:root[data-theme="dark"]{
+  --paper:#111318; --card:#1a1d24; --ink:#eceef3; --muted:#a3a8b5; --line:#2c303a;
+  --accent:#8b97ff; --rev:#5b9bf0; --cost:#f08a55; --now:#2fc795; --be:#a08cf5;
+  --good:#5fd3a2; --good-bg:#16352a; --bad:#ff8c84; --bad-bg:#3d1d1b; color-scheme:dark;}
+*{box-sizing:border-box}
+body{margin:0;background:var(--paper);color:var(--ink);font-family:var(--body);font-size:15px;line-height:1.6}
+.wrap{max-width:1120px;margin:0 auto;padding:28px 20px 48px;display:grid;gap:20px}
+h1{font-family:var(--display);font-weight:600;font-size:28px;margin:0;text-wrap:balance}
+h2{font-size:17px;font-weight:700;margin:0 0 12px}
+.sub{color:var(--muted);margin:4px 0 0;max-width:72ch}
+.card{background:var(--card);border:1px solid var(--line);border-radius:12px;padding:18px 20px}
+.formula{font-family:var(--mono);font-size:14px;display:grid;gap:6px}
+.formula div{display:flex;gap:10px;flex-wrap:wrap}
+.formula b{font-family:var(--body);font-weight:500;min-width:8em;color:var(--muted)}
+.vars{display:flex;flex-wrap:wrap;gap:6px 18px;margin-top:10px;font-size:13px;color:var(--muted)}
+.vars code{font-family:var(--mono);color:var(--ink)}
+.main{display:grid;grid-template-columns:minmax(0,340px) minmax(0,1fr);gap:20px}
+@media (max-width:860px){.main{grid-template-columns:minmax(0,1fr)}}
+.ctl{display:grid;gap:14px}
+.seg{display:flex;flex-wrap:wrap;gap:6px}
+.seg button{font:inherit;font-size:13px;padding:6px 10px;border-radius:8px;border:1px solid var(--line);background:transparent;color:var(--ink);cursor:pointer}
+.seg button[aria-pressed="true"]{background:var(--accent);border-color:var(--accent);color:#fff}
+.seg button:focus-visible,input:focus-visible,.cell:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+.lbl{font-size:13px;color:var(--muted);display:flex;justify-content:space-between;gap:8px}
+.lbl output{color:var(--ink);font-weight:500;font-variant-numeric:tabular-nums}
+input[type=range]{width:100%;accent-color:var(--accent)}
+input[type=number]{width:100%;font:inherit;padding:6px 8px;border:1px solid var(--line);border-radius:8px;background:transparent;color:var(--ink)}
+.hint{font-size:12px;color:var(--muted);margin:2px 0 0}
+.tiles{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:10px}
+.tile{border:1px solid var(--line);border-radius:10px;padding:10px 12px}
+.tile span{display:block;font-size:12px;color:var(--muted)}
+.tile strong{display:block;font-size:20px;font-weight:500;font-variant-numeric:tabular-nums}
+.pos{color:var(--good)} .neg{color:var(--bad)}
+.verdict{display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin:14px 0 6px}
+.pill{font-size:13px;font-weight:500;padding:3px 10px;border-radius:999px}
+.pill.ok{background:var(--good-bg);color:var(--good)} .pill.no{background:var(--bad-bg);color:var(--bad)}
+.legend{display:flex;flex-wrap:wrap;gap:14px;font-size:12px;color:var(--muted);margin:6px 0}
+.legend i{display:inline-block;width:14px;height:0;border-top:2px solid;vertical-align:middle;margin-right:4px}
+.legend .dot{width:9px;height:9px;border:0;border-radius:50%;vertical-align:middle}
+.chartbox{position:relative;height:320px}
+.matrix{overflow-x:auto}
+table{border-collapse:collapse;width:100%;min-width:620px;font-size:14px}
+th,td{border-bottom:1px solid var(--line);padding:8px 10px;text-align:left;vertical-align:top}
+th{font-size:12px;color:var(--muted);font-weight:500}
+td.num{font-variant-numeric:tabular-nums}
+.cell{display:block;width:100%;text-align:left;font:inherit;border:0;border-radius:8px;padding:6px 8px;cursor:pointer;font-variant-numeric:tabular-nums}
+.cell.ok{background:var(--good-bg);color:var(--good)} .cell.no{background:var(--bad-bg);color:var(--bad)}
+.cell small{display:block;font-size:11px;opacity:.85}
+.cell[aria-current="true"]{outline:2px solid var(--accent)}
+ul{margin:0;padding-left:1.2em} li{margin:4px 0}
+.notes{display:grid;grid-template-columns:repeat(auto-fit,minmax(300px,1fr));gap:20px}
+.small{font-size:13px;color:var(--muted)}
+a{color:var(--accent)}
+@media (prefers-reduced-motion:reduce){*{transition:none!important}}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <h1>动画外包盈亏计算器</h1>
+    <p class="sub">评估“AI数据训练动画”外包合作：客户按秒结算（L1 4–6 元、L2 6–8.5 元、L3 11–14 元），要求逐帧匹配参考原片、纯手K、禁止 AI 生成或自动重建。选择等级、制作方式和团队，看每小时、每秒、每月是赚还是亏。</p>
+  </header>
+
+  <section class="card" aria-labelledby="f-h">
+    <h2 id="f-h">计算公式</h2>
+    <div class="formula">
+      <div><b>每小时成本 c</b><span>c = w × (1 + o) × r</span></div>
+      <div><b>每小时利润</b><span>= p × e − c</span></div>
+      <div><b>保本效率 e*</b><span>e* = c ÷ p</span></div>
+      <div><b>每秒利润</b><span>= p − c ÷ e</span></div>
+      <div><b>月利润</b><span>= 每秒利润 × 月配额（分钟）× 60</span></div>
+    </div>
+    <div class="vars"><span><code>p</code> 单价（元/秒）</span><span><code>e</code> 效率（每小时交付的成片秒数）</span><span><code>w</code> 时薪（英镑/小时）</span><span><code>o</code> 其他成本比例（社保、软件、设备等）</span><span><code>r</code> 汇率（1 英镑兑人民币）</span></div>
+  </section>
+
+  <section class="main">
+    <div class="card ctl" aria-labelledby="c-h">
+      <h2 id="c-h">参数</h2>
+      <div><div class="lbl">镜头等级</div><div class="seg" id="segLevel"></div><p class="hint" id="levelHint"></p></div>
+      <div><div class="lbl">制作方式</div><div class="seg" id="segMethod"></div><p class="hint" id="methodHint"></p></div>
+      <div><div class="lbl">团队</div><div class="seg" id="segTeam"></div></div>
+      <div><label class="lbl" for="p">单价 p（元/秒）<output id="pOut"></output></label><input type="range" id="p" min="1" max="120" step="0.5"></div>
+      <div><label class="lbl" for="e">效率 e（秒/小时）<output id="eOut"></output></label><input type="range" id="e" min="0.1" max="50" step="0.1"></div>
+      <div><label class="lbl" for="w">时薪 w（英镑/小时）<output id="wOut"></output></label><input type="range" id="w" min="2" max="60" step="0.01"></div>
+      <div><label class="lbl" for="o">其他成本 o<output id="oOut"></output></label><input type="range" id="o" min="0" max="60" step="1" value="15"></div>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px">
+        <div><label class="lbl" for="r">汇率 r</label><input type="number" id="r" value="8.81" step="0.01" min="1"></div>
+        <div><label class="lbl" for="q">月配额（分钟）</label><input type="number" id="q" value="300" step="50" min="0"></div>
+      </div>
+      <p class="hint">选择等级、制作方式或团队，会把单价、效率、时薪重置为对应的默认值；之后可以用滑块微调。</p>
+    </div>
+
+    <div class="card" aria-labelledby="r-h">
+      <h2 id="r-h">结果</h2>
+      <div class="tiles">
+        <div class="tile"><span>保本效率 e*</span><strong id="tBe"></strong></div>
+        <div class="tile"><span>当前效率 e</span><strong id="tE"></strong></div>
+        <div class="tile"><span>每小时利润</span><strong id="tPh"></strong></div>
+        <div class="tile"><span>每秒利润</span><strong id="tPs"></strong></div>
+        <div class="tile"><span>月利润</span><strong id="tMo"></strong></div>
+        <div class="tile"><span>完成月配额需要人数</span><strong id="tPpl"></strong></div>
+      </div>
+      <div class="verdict"><span class="pill" id="pill"></span><span class="small" id="verdictText"></span></div>
+      <div class="legend">
+        <span><i style="border-color:var(--rev)"></i>每小时收入 p × e</span>
+        <span><i style="border-color:var(--cost);border-top-style:dashed"></i>每小时成本 c</span>
+        <span><i class="dot" style="background:var(--now)"></i>当前效率</span>
+        <span><i class="dot" style="background:var(--be);border-radius:2px;transform:rotate(45deg)"></i>保本点</span>
+      </div>
+      <div class="chartbox"><canvas id="chart" role="img" aria-label="每小时收入与成本随效率变化的折线图，两线交点为保本效率">收入线随效率上升，成本线水平，交点为保本效率。</canvas></div>
+      <p class="small" style="margin:6px 0 0">蓝线在橙线上方的区域是盈利区。绿点落在紫色保本点右边才赚钱。</p>
+    </div>
+  </section>
+
+  <section class="card" aria-labelledby="m-h">
+    <h2 id="m-h">情景对比：每小时利润（按各等级单价上限，使用当前的其他成本和汇率）</h2>
+    <div class="matrix"><table>
+      <thead><tr><th>等级 / 制作方式</th><th>效率（秒/小时）</th><th>英国团队（£25/小时）</th><th>英国最低时薪（£12.71）</th><th>低成本地区团队（约 50 元/小时）</th></tr></thead>
+      <tbody id="mBody"></tbody>
+    </table></div>
+    <p class="small" style="margin:10px 0 0">点击任意格子，把这个情景载入上方计算器。绿色为盈利，红色为亏损。</p>
+  </section>
+
+  <section class="card notes">
+    <div>
+      <h2>结论</h2>
+      <ul>
+        <li>英国团队纯手K：三个等级都亏，单价需要涨 7–90 倍才保本。放量只会亏得更多。</li>
+        <li>英国团队加真人动捕：L1 约每小时 15 秒，仍只到保本线（42 秒）的三分之一左右。</li>
+        <li>唯一接近成立的组合：低成本地区团队、客户书面允许动捕加人工修整、只接 L1（最多加一部分 L2）。</li>
+        <li>L3 的动物镜头无法动捕，任何团队按手K都不成立。</li>
+      </ul>
+    </div>
+    <div>
+      <h2>前提与假设</h2>
+      <ul class="small">
+        <li>效率为熟练动画师的经验估计：纯手K L1 约 3、L2 约 1、L3 约 0.2 秒/小时（L3 测试 10 秒约 50 小时）；动捕加人工修整 L1 约 10–20、L2 约 4–8 秒/小时。建议内部实测后替换。</li>
+        <li>动捕是否允许尚未确认：客户规则写明“纯手K、禁止自动动作生成工具和自动重建”，使用前必须取得书面许可。</li>
+        <li>英国法定最低时薪 £12.71（2026 年 4 月起，GOV.UK）。英国自由职业动画师约 £40–50/小时（YunoJuno、ITJobsWatch）。</li>
+        <li>汇率默认 8.81（2026 年 11 月中旬），每人每月有效工时按 140 小时计算。未计入免费测试、返修、设备和演员费用。</li>
+      </ul>
+    </div>
+  </section>
+</div>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.js"></script>
+<script>
+const LEVELS={
+  L1:{name:'L1 简单镜头',lo:4,hi:6,eff:{hand:3,mocap:15},hint:'常规人物动作，白模表达大致姿态和运动方向。单价 4–6 元/秒。'},
+  L2:{name:'L2 标准镜头',lo:6,hi:8.5,eff:{hand:1,mocap:6},hint:'持续复杂动作、关键关节，多切镜。单价 6–8.5 元/秒。'},
+  L3:{name:'L3 复杂镜头',lo:11,hi:14,eff:{hand:0.2,mocap:1},hint:'动物模型和骨骼、人物精细动作。单价 11–14 元/秒。'}};
+const METHODS={hand:{name:'纯手K',hint:'符合客户规则的唯一确定方式。'},mocap:{name:'真人动捕 + 人工修整',hint:'需客户书面允许。L3 动物镜头无法动捕，此处效率仅指人物镜头。'}};
+const TEAMS={uk:{name:'英国团队',w:()=>25},ukmin:{name:'英国最低时薪',w:()=>12.71},low:{name:'低成本地区团队',w:()=>50/rate()}};
+const $=id=>document.getElementById(id);
+const S={level:'L1',method:'hand',team:'uk'};
+const rate=()=>Math.max(1,+$('r').value||8.81);
+const yuan=v=>(v<0?'−':'')+'¥'+Math.abs(Math.round(v)).toLocaleString('zh-CN');
+const yuan1=v=>(v<0?'−':'')+'¥'+Math.abs(v).toFixed(1);
+function seg(id,obj,key){const el=$(id);el.innerHTML='';for(const k in obj){const b=document.createElement('button');b.type='button';b.textContent=obj[k].name;b.dataset.k=k;b.setAttribute('aria-pressed',S[key]===k);b.onclick=()=>{S[key]=k;applyDefaults();};el.appendChild(b);}}
+function applyDefaults(){
+  const L=LEVELS[S.level];
+  $('p').value=L.hi;$('e').value=L.eff[S.method];$('w').value=TEAMS[S.team].w().toFixed(2);
+  render();}
+function css(v){return getComputedStyle(document.documentElement).getPropertyValue(v).trim();}
+let chart;
+function makeChart(){
+  if(chart)chart.destroy();
+  const grid=css('--line'),tick=css('--muted'),card=css('--card');
+  chart=new Chart($('chart'),{type:'scatter',data:{datasets:[
+    {label:'每小时收入',data:[],showLine:true,borderColor:css('--rev'),borderWidth:2,pointRadius:0,fill:false},
+    {label:'每小时成本',data:[],showLine:true,borderColor:css('--cost'),borderDash:[6,4],borderWidth:2,pointRadius:0},
+    {label:'当前效率',data:[],pointRadius:7,pointBackgroundColor:css('--now'),pointBorderColor:card,pointBorderWidth:2},
+    {label:'保本点',data:[],pointRadius:8,pointStyle:'rectRot',pointBackgroundColor:css('--be'),pointBorderColor:card,pointBorderWidth:2}]},
+    options:{responsive:true,maintainAspectRatio:false,animation:false,
+      plugins:{legend:{display:false},tooltip:{callbacks:{label:c=>c.dataset.label+'：效率 '+c.parsed.x.toFixed(1)+' 秒/小时，'+yuan(c.parsed.y)+'/小时'}}},
+      scales:{x:{type:'linear',min:0,title:{display:true,text:'效率 e（秒/小时）',color:tick},grid:{display:false},ticks:{color:tick}},
+              y:{min:0,title:{display:true,text:'元/小时',color:tick},grid:{color:grid},ticks:{color:tick,callback:v=>'¥'+Math.round(v)}}}}});
+  render();}
+function calc(p,e,w,o,r){const c=w*(1+o)*r;return{c,be:c/p,ph:p*e-c,ps:p-c/e};}
+function render(){
+  for(const [id,key] of [['segLevel','level'],['segMethod','method'],['segTeam','team']])
+    $(id).querySelectorAll('button').forEach(b=>b.setAttribute('aria-pressed',b.dataset.k===S[key]));
+  $('levelHint').textContent=LEVELS[S.level].hint;$('methodHint').textContent=METHODS[S.method].hint;
+  const p=+$('p').value,e=+$('e').value,w=+$('w').value,o=+$('o').value/100,r=rate(),q=Math.max(0,+$('q').value||0);
+  $('pOut').textContent=p.toFixed(1)+' 元';$('eOut').textContent=e.toFixed(1)+' 秒';$('wOut').textContent='£'+w.toFixed(2)+'（¥'+(w*r).toFixed(0)+'）';$('oOut').textContent=Math.round(o*100)+'%';
+  const k=calc(p,e,w,o,r),mo=k.ps*q*60,ppl=q*60/e/140;
+  $('tBe').textContent=k.be.toFixed(1)+' 秒/小时';$('tE').textContent=e.toFixed(1)+' 秒/小时';
+  const setv=(id,txt,v)=>{const el=$(id);el.textContent=txt;el.className=v>=0?'pos':'neg';};
+  setv('tPh',yuan(k.ph),k.ph);setv('tPs',yuan1(k.ps),k.ps);setv('tMo',yuan(mo),mo);
+  $('tPpl').textContent=ppl>=10?Math.round(ppl).toLocaleString('zh-CN')+' 人':ppl.toFixed(1)+' 人';
+  const ok=k.ph>=0,pill=$('pill');pill.textContent=ok?'盈利':'亏损';pill.className='pill '+(ok?'ok':'no');
+  $('verdictText').textContent=ok?('当前效率比保本线高 '+((e/k.be-1)*100).toFixed(0)+'%。'):('效率需要提高到现在的 '+(k.be/e).toFixed(1)+' 倍，或单价提高到 '+(k.c/e).toFixed(1)+' 元/秒，才能保本。');
+  if(chart){
+    const xmax=Math.min(Math.max(20,e*1.4,k.be*1.3),300),pts=[];
+    for(let i=0;i<=60;i++){const x=xmax*i/60;pts.push({x,y:p*x});}
+    chart.data.datasets[0].data=pts;chart.data.datasets[1].data=[{x:0,y:k.c},{x:xmax,y:k.c}];
+    chart.data.datasets[2].data=[{x:e,y:p*e}];chart.data.datasets[3].data=[{x:k.be,y:k.c}];
+    chart.options.scales.x.max=xmax;chart.options.scales.y.max=Math.max(k.c,p*Math.min(xmax,Math.max(e,k.be)*1.3))*1.15;chart.update();}
+  matrix(o,r);}
+function matrix(o,r){
+  const tb=$('mBody');tb.innerHTML='';
+  for(const lk in LEVELS)for(const mk in METHODS){
+    const L=LEVELS[lk],e=L.eff[mk],tr=document.createElement('tr');
+    tr.innerHTML='<td>'+L.name+'<br><span class="small">'+METHODS[mk].name+(lk==='L3'&&mk==='mocap'?'（仅人物镜头）':'')+'</span></td><td class="num">'+e+'</td>';
+    for(const tk in TEAMS){
+      const k=calc(L.hi,e,TEAMS[tk].w(),o,r),td=document.createElement('td'),b=document.createElement('button');
+      b.type='button';b.className='cell '+(k.ph>=0?'ok':'no');
+      b.innerHTML=(k.ph>=0?'+':'')+yuan(k.ph)+'/小时<small>保本需 '+k.be.toFixed(1)+' 秒/小时</small>';
+      b.setAttribute('aria-label',L.name+'，'+METHODS[mk].name+'，'+TEAMS[tk].name+'：每小时利润 '+yuan(k.ph));
+      const cur=S.level===lk&&S.method===mk&&S.team===tk&&Math.abs(+$('p').value-L.hi)<1e-9&&Math.abs(+$('e').value-e)<1e-9;
+      b.setAttribute('aria-current',cur);
+      b.onclick=()=>{S.level=lk;S.method=mk;S.team=tk;applyDefaults();document.getElementById('r-h').scrollIntoView({behavior:matchMedia('(prefers-reduced-motion: reduce)').matches?'auto':'smooth',block:'start'});};
+      td.appendChild(b);tr.appendChild(td);}
+    tb.appendChild(tr);}}
+seg('segLevel',LEVELS,'level');seg('segMethod',METHODS,'method');seg('segTeam',TEAMS,'team');
+['p','e','w','o','r','q'].forEach(id=>$(id).addEventListener('input',()=>{if(id==='r'&&S.team==='low')$('w').value=TEAMS.low.w().toFixed(2);render();}));
+$('p').value=6;$('e').value=3;$('w').value=25;
+render();
+if(window.Chart)makeChart();
+try{matchMedia('(prefers-color-scheme: dark)').addEventListener('change',()=>window.Chart&&makeChart());new MutationObserver(()=>window.Chart&&makeChart()).observe(document.documentElement,{attributes:true,attributeFilter:['data-theme']});}catch(err){}
+</script>
+</body>
+</html>
